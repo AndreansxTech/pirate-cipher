@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pirate Cipher</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🏴‍☠️ Pirate Cipher 🏴‍☠️</h1>
+        <div class="connection-section">
+            <input type="text" id="roomId" maxlength="4" placeholder="Enter 4-digit room code">
+            <button onclick="joinRoom()">Connect</button>
+            <span id="connectionStatus">Not connected</span>
+        </div>
+        <div class="input-section">
+            <textarea id="message" placeholder="Enter your message here"></textarea>
+            <div class="buttons">
+                <button onclick="encrypt()">Encrypt</button>
+                <button onclick="decrypt()">Decrypt</button>
+            </div>
+            <textarea id="result" placeholder="Result will appear here" readonly></textarea>
+        </div>
+    </div>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
