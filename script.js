@@ -32,7 +32,7 @@ async function joinRoom() {
     roomNumber = roomInput.value;
     
     // Connect to Cloudflare Worker
-    ws = new WebSocket('https://lively-river-b961.koliberekart.workers.dev/');
+    ws = new WebSocket('https://chat-signaling.koliberekart.workers.dev');
     
     ws.onopen = () => {
         ws.send(JSON.stringify({
