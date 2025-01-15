@@ -31,8 +31,8 @@ async function joinRoom() {
     localUsername = usernameInput.value;
     roomNumber = roomInput.value;
     
-    // Connect to signaling server
-    ws = new WebSocket('ws://localhost:8080');
+    // Connect to Cloudflare Worker
+    ws = new WebSocket('https://lively-river-b961.koliberekart.workers.dev/');
     
     ws.onopen = () => {
         ws.send(JSON.stringify({
