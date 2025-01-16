@@ -1,6 +1,0 @@
-name = "chat-signaling"
-main = "worker.js"
-compatibility_date = "2023-01-01"
-
-# Remove the [triggers] section and use workers_dev at root level
-workers_dev = true

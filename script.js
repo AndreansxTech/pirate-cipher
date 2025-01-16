@@ -1,8 +1,11 @@
-let connections = new Map();
 let localUsername = '';
 let roomNumber = '';
-let ws = null;
+let isHost = false;
 
+// We'll store all connected PeerJS DataConnections here:
+const connections = [];
+
+// HTML elements
 const joinForm = document.getElementById('join-form');
 const chatRoom = document.getElementById('chat-room');
 const joinBtn = document.getElementById('join-btn');
@@ -16,204 +19,202 @@ joinBtn.addEventListener('click', joinRoom);
 leaveBtn.addEventListener('click', leaveRoom);
 sendBtn.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendMessage();
+  if (e.key === 'Enter') sendMessage();
 });
 
-async function joinRoom() {
-    const usernameInput = document.getElementById('username');
-    const roomInput = document.getElementById('room-number');
-    
-    if (!usernameInput.value || !roomInput.value.match(/^\d{4}$/)) {
-        alert('Please enter a valid name and 4-digit room number');
-        return;
+// We'll keep a reference to our Peer instance:
+let peer = null;
+
+// Attempt to join a room
+function joinRoom() {
+  const usernameInput = document.getElementById('username');
+  const roomInput = document.getElementById('room-number');
+
+  if (!usernameInput.value || !roomInput.value.match(/^\d{4}$/)) {
+    alert('Please enter a valid name and 4-digit room number');
+    return;
+  }
+
+  localUsername = usernameInput.value.trim();
+  roomNumber = roomInput.value.trim();
+
+  // Try to become the "host" by using roomNumber as our PeerJS ID
+  peer = new Peer(roomNumber, {
+    debug: 2
+    // If you have your own PeerServer, specify host/port/path here
+    // host: 'your-peer-server.com',
+    // port: 443,
+    // secure: true,
+    // path: '/myapp'
+  });
+
+  // If the ID is taken, we'll become a "client" with a random ID
+  peer.on('error', (err) => {
+    if (err.type === 'unavailable-id') {
+      // roomNumber is taken => someone else is the host
+      isHost = false;
+      // Create a peer with a random ID
+      peer = new Peer(null, { debug: 2 });
+      setupPeerListeners(); // We have to re-bind the listeners
+    } else {
+      console.error(err);
+      alert('Error creating or connecting to Peer: ' + err);
     }
+  });
 
-    localUsername = usernameInput.value;
-    roomNumber = roomInput.value;
-    
-    // Connect to Cloudflare Worker
-    ws = new WebSocket('https://chat-signaling.koliberekart.workers.dev');
-    
-    ws.onopen = () => {
-        ws.send(JSON.stringify({
-            type: 'join',
-            room: roomNumber,
-            username: localUsername
-        }));
-    };
+  // This is the normal flow if we successfully become the host
+  peer.on('open', (id) => {
+    if (id === roomNumber) {
+      // We are the host
+      isHost = true;
+      console.log(`HOST: Our peer ID is ${id}`);
+      showChatUI();
+    } else {
+      // We are a client, now connect to the existing host
+      console.log(`CLIENT: Our random peer ID is ${id}, connecting to host...`);
+      connectToHost();
+    }
+  });
 
-    ws.onmessage = handleSignalingMessage;
-    
-    roomDisplay.textContent = `Room: ${roomNumber} | Username: ${localUsername}`;
-    joinForm.classList.add('hidden');
-    chatRoom.classList.remove('hidden');
-    addMessage('System', 'Joined room ' + roomNumber);
+  // If we successfully create a Peer with the ID, we must also listen
+  // for inbound connections from new clients (host only)
+  peer.on('connection', (conn) => {
+    // This fires when a client tries to connect to us (the host)
+    console.log(`New inbound connection from: ${conn.peer}`);
+    handleConnection(conn);
+  });
 }
 
-async function handleSignalingMessage(event) {
-    const message = JSON.parse(event.data);
-    
-    switch(message.type) {
-        case 'user-joined':
-            if (message.username !== localUsername) {
-                addMessage('System', `${message.username} joined the room`);
-                createPeerConnection(message.username);
-            }
-            break;
-            
-        case 'user-left':
-            if (message.username !== localUsername) {
-                addMessage('System', `${message.username} left the room`);
-                connections.delete(message.username);
-            }
-            break;
-            
-        case 'offer':
-            handleOffer(message);
-            break;
-            
-        case 'answer':
-            handleAnswer(message);
-            break;
-            
-        case 'ice-candidate':
-            handleIceCandidate(message);
-            break;
-    }
+// Setup a newly created random peer to connect to the host
+function setupPeerListeners() {
+  peer.on('open', (id) => {
+    console.log(`CLIENT: Our random peer ID is ${id}, connecting to host...`);
+    connectToHost();
+  });
+
+  peer.on('connection', (conn) => {
+    // Typically, a client wouldn't expect inbound connections,
+    // but let's keep it if you want advanced multi-direction features.
+    handleConnection(conn);
+  });
 }
 
-async function createPeerConnection(username) {
-    const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+// For clients: connect to the host's Peer ID (which is the roomNumber)
+function connectToHost() {
+  const conn = peer.connect(roomNumber);
+  handleConnection(conn);
+  showChatUI();
+}
+
+// Common function to handle an incoming or outgoing PeerJS DataConnection
+function handleConnection(conn) {
+  conn.on('open', () => {
+    // Save this connection
+    connections.push(conn);
+    console.log('Connection open with ', conn.peer);
+
+    // Send a "hello" if you want, or just do nothing special
+    // conn.send({ username: localUsername, content: 'Hello from ' + localUsername });
+
+    // When data arrives:
+    conn.on('data', (data) => {
+      // data is an object like { username, content }
+      addMessage(data.username, data.content);
+
+      // If we are the host, broadcast this to everyone else
+      if (isHost) {
+        broadcastExcept(conn, data);
+      }
     });
-    
-    pc.onicecandidate = (event) => {
-        if (event.candidate) {
-            ws.send(JSON.stringify({
-                type: 'ice-candidate',
-                candidate: event.candidate,
-                target: username,
-                room: roomNumber,
-                sender: localUsername
-            }));
-        }
-    };
-    
-    pc.ondatachannel = (event) => {
-        setupDataChannel(event.channel, username);
-    };
-    
-    const dataChannel = pc.createDataChannel('chat');
-    setupDataChannel(dataChannel, username);
-    
-    connections.set(username, { pc, dataChannel });
-    
-    // Create and send offer if we're the initiator
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    ws.send(JSON.stringify({
-        type: 'offer',
-        offer: offer,
-        target: username,
-        room: roomNumber,
-        sender: localUsername
-    }));
+  });
+
+  conn.on('close', () => {
+    console.log('Connection closed with ', conn.peer);
+    removeConnection(conn);
+  });
+
+  conn.on('error', (err) => {
+    console.error('Connection error: ', err);
+    removeConnection(conn);
+  });
 }
 
-function setupDataChannel(dataChannel, username) {
-    dataChannel.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        addMessage(message.username, message.content);
-    };
-}
-
-async function handleOffer(message) {
-    const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
-    
-    pc.onicecandidate = (event) => {
-        if (event.candidate) {
-            ws.send(JSON.stringify({
-                type: 'ice-candidate',
-                candidate: event.candidate,
-                target: message.sender,
-                room: roomNumber,
-                sender: localUsername
-            }));
-        }
-    };
-    
-    pc.ondatachannel = (event) => {
-        setupDataChannel(event.channel, message.sender);
-    };
-    
-    connections.set(message.sender, { pc });
-    
-    await pc.setRemoteDescription(message.offer);
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    
-    ws.send(JSON.stringify({
-        type: 'answer',
-        answer: answer,
-        target: message.sender,
-        room: roomNumber,
-        sender: localUsername
-    }));
-}
-
-async function handleAnswer(message) {
-    const connection = connections.get(message.sender);
-    if (connection) {
-        await connection.pc.setRemoteDescription(message.answer);
+// Helper to broadcast to all except the origin
+function broadcastExcept(originConn, data) {
+  connections.forEach((c) => {
+    if (c !== originConn && c.open) {
+      c.send(data);
     }
+  });
 }
 
-async function handleIceCandidate(message) {
-    const connection = connections.get(message.sender);
-    if (connection) {
-        await connection.pc.addIceCandidate(message.candidate);
-    }
+// Remove a closed connection from our array
+function removeConnection(conn) {
+  const index = connections.indexOf(conn);
+  if (index >= 0) {
+    connections.splice(index, 1);
+  }
 }
 
-function leaveRoom() {
-    if (ws) {
-        ws.close();
-    }
-    connections.forEach(({ pc }) => pc.close());
-    connections.clear();
-    
-    chatRoom.classList.add('hidden');
-    joinForm.classList.remove('hidden');
-    messagesDiv.innerHTML = '';
+// Show the chat UI and hide the join form
+function showChatUI() {
+  roomDisplay.textContent = `Room: ${roomNumber} | Username: ${localUsername}`;
+  joinForm.classList.add('hidden');
+  chatRoom.classList.remove('hidden');
+  addMessage('System', 'Joined room ' + roomNumber);
 }
 
+// Send a chat message
 function sendMessage() {
-    if (!messageInput.value.trim()) return;
-    
-    const message = {
-        username: localUsername,
-        content: messageInput.value,
-        timestamp: new Date().toISOString()
-    };
-    
-    addMessage(message.username, message.content);
-    
-    // Send message to all peers
-    connections.forEach(({ dataChannel }) => {
-        if (dataChannel.readyState === 'open') {
-            dataChannel.send(JSON.stringify(message));
-        }
+  const text = messageInput.value.trim();
+  if (!text) return;
+
+  const message = {
+    username: localUsername,
+    content: text
+  };
+
+  addMessage(message.username, message.content);
+
+  // If host, broadcast to all. If client, we have just one connection (to host)
+  if (isHost) {
+    connections.forEach((conn) => {
+      if (conn.open) {
+        conn.send(message);
+      }
     });
-    
-    messageInput.value = '';
+  } else {
+    if (connections[0] && connections[0].open) {
+      connections[0].send(message);
+    }
+  }
+
+  messageInput.value = '';
 }
 
+// Display a message locally
 function addMessage(username, content) {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message');
-    messageDiv.textContent = `${username}: ${content}`;
-    messagesDiv.appendChild(messageDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  const messageDiv = document.createElement('div');
+  messageDiv.classList.add('message');
+  messageDiv.textContent = `${username}: ${content}`;
+  messagesDiv.appendChild(messageDiv);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+// Leave the room
+function leaveRoom() {
+  // Close all connections
+  connections.forEach((conn) => conn.close());
+  connections.length = 0;
+
+  // Destroy the peer
+  if (peer) {
+    peer.destroy();
+    peer = null;
+  }
+
+  messagesDiv.innerHTML = '';
+  chatRoom.classList.add('hidden');
+  joinForm.classList.remove('hidden');
+  console.log('Left the room');
 }

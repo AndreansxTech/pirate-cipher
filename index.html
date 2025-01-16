@@ -1,31 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Chat</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P Chat with PeerJS</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <div id="join-form" class="join-container">
-            <h2>Join Chat Room</h2>
-            <input type="text" id="username" placeholder="Your Name" maxlength="20">
-            <input type="text" id="room-number" placeholder="Room Number (4 digits)" maxlength="4" pattern="[0-9]{4}">
-            <button id="join-btn">Join Room</button>
-        </div>
-        <div id="chat-room" class="chat-container hidden">
-            <div class="room-info">
-                <span id="room-display"></span>
-                <button id="leave-btn">Leave Room</button>
-            </div>
-            <div id="messages" class="messages"></div>
-            <div class="input-area">
-                <input type="text" id="message-input" placeholder="Type your message...">
-                <button id="send-btn">Send</button>
-            </div>
-        </div>
+  <div class="container">
+    <div id="join-form" class="join-container">
+      <h2>Join Chat Room</h2>
+      <input type="text" id="username" placeholder="Your Name" maxlength="20">
+      <input type="text" id="room-number" placeholder="Room Number (4 digits)" maxlength="4" pattern="[0-9]{4}">
+      <button id="join-btn">Join Room</button>
     </div>
-    <script src="script.js"></script>
+    <div id="chat-room" class="chat-container hidden">
+      <div class="room-info">
+        <span id="room-display"></span>
+        <button id="leave-btn">Leave Room</button>
+      </div>
+      <div id="messages" class="messages"></div>
+      <div class="input-area">
+        <input type="text" id="message-input" placeholder="Type your message...">
+        <button id="send-btn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PeerJS from jsDelivr -->
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.3.2/dist/peerjs.min.js"></script>
+  <!-- Your main script -->
+  <script src="script.js"></script>
 </body>
 </html>
