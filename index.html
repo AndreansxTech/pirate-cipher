@@ -24,6 +24,12 @@
                             500: '#6366f1',
                             600: '#4f46e5',
                             700: '#4338ca'
+                        },
+                        'nature': {
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d'
                         }
                     }
                 }
@@ -40,6 +46,9 @@
         }
         body.theme-cool {
             background: linear-gradient(45deg, #4f46e5, #7c3aed);
+        }
+        body.theme-nature {
+            background: linear-gradient(45deg, #22c55e, #15803d);
         }
 
         /* Custom Scrollbar Styles */
@@ -75,6 +84,17 @@
             background: rgba(79, 70, 229, 0.7);
         }
 
+        /* Nature theme scrollbar */
+        .theme-nature #messages::-webkit-scrollbar-thumb {
+            background: rgba(34, 197, 94, 0.5);
+            border-radius: 4px;
+            backdrop-filter: blur(5px);
+        }
+
+        .theme-nature #messages::-webkit-scrollbar-thumb:hover {
+            background: rgba(34, 197, 94, 0.7);
+        }
+
         /* Firefox scrollbar */
         #messages {
             scrollbar-width: thin;
@@ -83,6 +103,10 @@
 
         .theme-cool #messages {
             scrollbar-color: rgba(79, 70, 229, 0.5) rgba(255, 255, 255, 0.1);
+        }
+
+        .theme-nature #messages {
+            scrollbar-color: rgba(34, 197, 94, 0.5) rgba(255, 255, 255, 0.1);
         }
     </style>
 </head>
@@ -123,6 +147,13 @@
             <div class="p-4 bg-black/10 border-t border-white/30 flex gap-2">
                 <input type="text" id="message-input" placeholder="Type your message..."
                     class="flex-1 px-4 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-warm-400">
+                <input type="file" id="file-input" class="hidden" />
+                <button id="attach-btn"
+                    class="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clip-rule="evenodd" />
+                    </svg>
+                </button>
                 <button id="send-btn"
                     class="px-6 py-2 bg-warm-500 hover:bg-warm-600 text-white font-semibold rounded-lg transition duration-200">
                     Send
@@ -141,7 +172,7 @@
             <div class="flex justify-end gap-2">
                 <button id="password-cancel" 
                     class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition duration-200">
-                    Cancel
+                    Join without decryption
                 </button>
                 <button id="password-confirm"
                     class="px-4 py-2 bg-warm-500 hover:bg-warm-600 text-white rounded-lg transition duration-200">
