@@ -1,5 +1,7 @@
 # Pirate Cipher - P2P Encrypted Chat
 
+## You can test it by opening two browser windows and connecting to the same room !
+
 A secure, peer-to-peer encrypted chat application that works directly in the browser with no server required. Features end-to-end encryption, file sharing, and a beautiful glassmorphism UI design.
 
 ## Preview video
