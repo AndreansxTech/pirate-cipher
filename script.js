@@ -6,10 +6,10 @@ let encryptionKey = '';
 let isPasswordSet = false;
 let hasDeclined = false;
 
-// We'll store all connected PeerJS DataConnections here:
+//we will store all connected PeerJS DataConnections here
 const connections = [];
 
-// HTML elements
+//html elements
 const joinForm = document.getElementById('join-form');
 const chatRoom = document.getElementById('chat-room');
 const joinBtn = document.getElementById('join-btn');
@@ -25,6 +25,8 @@ const passwordConfirm = document.getElementById('password-confirm');
 const passwordCancel = document.getElementById('password-cancel');
 const passwordModalTitle = document.getElementById('password-modal-title');
 const encryptionBtn = document.getElementById('encryption-btn');
+const attachBtn = document.getElementById('attach-btn');
+const fileInput = document.getElementById('file-input');
 
 joinBtn.addEventListener('click', joinRoom);
 leaveBtn.addEventListener('click', leaveRoom);
@@ -34,16 +36,30 @@ messageInput.addEventListener('keypress', (e) => {
 });
 themeToggle.addEventListener('click', () => {
   const body = document.body;
-  currentTheme = currentTheme === 'warm' ? 'cool' : 'warm';
-  body.classList.remove(`theme-${currentTheme === 'warm' ? 'cool' : 'warm'}`);
-  body.classList.add(`theme-${currentTheme}`);
+  // Update theme cycling
+  switch(currentTheme) {
+    case 'warm':
+      currentTheme = 'cool';
+      break;
+    case 'cool':
+      currentTheme = 'nature';
+      break;
+    default:
+      currentTheme = 'warm';
+  }
 
+  // Remove all theme classes
+  body.classList.remove('theme-warm', 'theme-cool', 'theme-nature');
+  body.classList.add(`theme-${currentTheme}`);
+  
   // Update all buttons and focus rings
   document.querySelectorAll('button').forEach(button => {
     if (button.id !== 'leave-btn') {
+      // Remove all possible theme classes
       button.classList.remove(
-        currentTheme === 'warm' ? 'bg-cool-500' : 'bg-warm-500',
-        currentTheme === 'warm' ? 'hover:bg-cool-600' : 'hover:bg-warm-600'
+        'bg-warm-500', 'hover:bg-warm-600',
+        'bg-cool-500', 'hover:bg-cool-600',
+        'bg-nature-500', 'hover:bg-nature-600'
       );
       button.classList.add(
         `bg-${currentTheme}-500`,
@@ -51,11 +67,13 @@ themeToggle.addEventListener('click', () => {
       );
     }
   });
-
+  
   // Update input focus rings
   document.querySelectorAll('input').forEach(input => {
     input.classList.remove(
-      currentTheme === 'warm' ? 'focus:ring-cool-400' : 'focus:ring-warm-400'
+      'focus:ring-warm-400',
+      'focus:ring-cool-400',
+      'focus:ring-nature-400'
     );
     input.classList.add(`focus:ring-${currentTheme}-400`);
   });
@@ -71,8 +89,48 @@ encryptionBtn.addEventListener('click', async () => {
   }
 });
 
+attachBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', handleFileSelect);
+
 // We'll keep a reference to our Peer instance:
 let peer = null;
+
+// Update peer creation with ICE server configuration
+function createPeer(id = null) {
+    const config = {
+        debug: 2,
+        host: '0.peerjs.com', // Use PeerJS's free public server
+        port: 443,
+        secure: true,
+        path: '/',
+        config: {
+            'iceServers': [
+                { 
+                    urls: [
+                        'stun:stun.l.google.com:19302',
+                        'stun:stun1.l.google.com:19302',
+                        'stun:stun2.l.google.com:19302',
+                        'stun:stun3.l.google.com:19302',
+                        'stun:stun4.l.google.com:19302',
+                        'stun:stun.stunprotocol.org:3478'
+                    ]
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ]
+        }
+    };
+
+    return new Peer(id, config);
+}
 
 // Update joinRoom function to simplify connection logic
 function joinRoom() {
@@ -87,21 +145,21 @@ function joinRoom() {
   localUsername = usernameInput.value.trim();
   roomNumber = roomInput.value.trim();
 
-  // Create a peer with the room number first (trying to be host)
-  peer = new Peer(roomNumber);
+  //create a peer with the room number first (trying to be host)
+  peer = createPeer(roomNumber);
 
   peer.on('error', async (err) => {
     if (err.type === 'unavailable-id') {
-      // Room exists, become a client
+      //room exists become a client
       console.log('Room exists, joining as client');
-      peer = new Peer();
+      peer = createPeer();
       
       peer.on('open', async () => {
         try {
           encryptionKey = await showPasswordPrompt(false);
           console.log('Creating connection to host...');
           
-          // Connect to host
+          // connect to host
           const conn = peer.connect(roomNumber, {
             reliable: true,
             serialization: 'json'
@@ -110,7 +168,7 @@ function joinRoom() {
           conn.on('open', () => {
             isHost = false;
             console.log('Connected as client to:', roomNumber);
-            handleConnection(conn);  // This will set up the data listener
+            handleConnection(conn);  //this will set up the data listener
             connections.push(conn);
             showChatUI();
           });
@@ -153,30 +211,28 @@ function joinRoom() {
   });
 }
 
-// New function to handle host creation
+// new function to handle host creation
 function becomeHost() {
   showPasswordPrompt(true).then(password => {
     encryptionKey = password;
     isPasswordSet = true;
     showChatUI();
   }).catch(() => {
-    // If host cancels password setup, still create room but without encryption
+    // If host cancels password setup still create room but without encryption
     isPasswordSet = false;
     encryptionKey = '';
     showChatUI();
   });
 }
 
-// New function to handle peer connection initialization
+//new function to handle peer connection initialization
 function initializePeerConnection() {
-  peer = new Peer(roomNumber, {
-    debug: 2
-  });
+  peer = createPeer(roomNumber);
 
   peer.on('error', (err) => {
     if (err.type === 'unavailable-id') {
       isHost = false;
-      peer = new Peer(null, { debug: 2 });
+      peer = createPeer();
       setupPeerListeners();
     } else {
       console.error(err);
@@ -201,7 +257,7 @@ function initializePeerConnection() {
   });
 }
 
-// Setup a newly created random peer to connect to the host
+// setup a newly created random peer to connect to the host
 function setupPeerListeners() {
   peer.on('open', (id) => {
     console.log(`CLIENT: Our random peer ID is ${id}, connecting to host...`);
@@ -209,13 +265,13 @@ function setupPeerListeners() {
   });
 
   peer.on('connection', (conn) => {
-    // Typically, a client wouldn't expect inbound connections,
-    // but let's keep it if you want advanced multi-direction features.
+    //Typically a client wouldnt expect inbound connections
+    //but lets keep it if you want advanced multi-direction features
     handleConnection(conn);
   });
 }
 
-// For clients: connect to the host's Peer ID (which is the roomNumber)
+//for clients: connect to the host's Peer ID (which is the roomNumber)
 function connectToHost() {
   const conn = peer.connect(roomNumber);
   handleConnection(conn);
@@ -238,7 +294,7 @@ function decryptMessage(text) {
   }
 }
 
-// Add password handling
+//add password handling
 function showPasswordPrompt(isSettingPassword = true) {
   passwordModalTitle.textContent = isSettingPassword ? 'Set Room Password' : 'Enter Room Password';
   passwordModal.classList.remove('hidden');
@@ -267,12 +323,59 @@ function showPasswordPrompt(isSettingPassword = true) {
   });
 }
 
+// Add file handling functions
+async function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    
+    const message = {
+      type: 'file',
+      username: localUsername,
+      content: encryptMessage(base64),
+      fileName: file.name,
+      fileType: file.type
+    };
+
+    // Show file attachment locally
+    addMessage(localUsername, `File: ${file.name}`, true, base64, file.type);
+
+    // Send to others
+    if (isHost) {
+      connections.forEach(conn => {
+        if (conn && conn.open) {
+          try {
+            conn.send(message);
+          } catch (err) {
+            console.error('Error sending file to client:', err);
+          }
+        }
+      });
+    } else if (connections[0] && connections[0].open) {
+      try {
+        connections[0].send(message);
+      } catch (err) {
+        console.error('Error sending file to host:', err);
+      }
+    }
+  } catch (err) {
+    console.error('Error processing file:', err);
+    addMessage('System', 'Failed to send file');
+  }
+
+  // Clear file input
+  fileInput.value = '';
+}
+
 // Update handleConnection function to fix message handling
 function handleConnection(conn) {
   conn.on('open', async () => {
     console.log('Connection established with:', conn.peer);
 
-    // Send join message
+    // send join message
     try {
       conn.send({
         type: 'join',
@@ -284,9 +387,9 @@ function handleConnection(conn) {
     }
   });
 
-  // Single data event handler for all messages
+  //single data event handler for all messages
   conn.on('data', (data) => {
-    console.log('Received data:', data);
+    console.log('Received data:', data.type);
 
     switch(data.type) {
       case 'join':
@@ -302,6 +405,19 @@ function handleConnection(conn) {
           connections.forEach(otherConn => {
             if (otherConn.peer !== conn.peer && otherConn.open) {
               console.log('Broadcasting to:', otherConn.peer);
+              otherConn.send(data);
+            }
+          });
+        }
+        break;
+      case 'file':
+        if (data.username !== localUsername) {
+          const fileContent = decryptMessage(data.content);
+          addMessage(data.username, `File: ${data.fileName}`, true, fileContent, data.fileType);
+        }
+        if (isHost) {
+          connections.forEach(otherConn => {
+            if (otherConn.peer !== conn.peer && otherConn.open) {
               otherConn.send(data);
             }
           });
@@ -332,12 +448,12 @@ function sendMessage() {
     content: encryptMessage(text),
   };
 
-  // Show our own message unencrypted
+  // show our own message unencrypted
   addMessage(localUsername, text);
 
   // Send the message
   if (isHost) {
-    // Host broadcasts to all clients
+    //host broadcasts to all clients
     connections.forEach((conn) => {
       if (conn && conn.open) {
         try {
@@ -368,7 +484,7 @@ function sendMessage() {
   messageInput.value = '';
 }
 
-// Add debug helper function
+//add debug helper function
 function logConnections() {
   console.log('Current connections:', connections.map(conn => ({
     peer: conn.peer,
@@ -377,7 +493,7 @@ function logConnections() {
   })));
 }
 
-// Update removeConnection to include logging
+// update removeConnection to include logging
 function removeConnection(conn) {
   const index = connections.indexOf(conn);
   if (index >= 0) {
@@ -387,7 +503,7 @@ function removeConnection(conn) {
   }
 }
 
-// Show the chat UI and hide the join form
+// show the chat UI and hide the join form
 function showChatUI() {
   roomDisplay.textContent = `Room: ${roomNumber} | Username: ${localUsername}`;
   joinForm.classList.add('hidden');
@@ -399,12 +515,12 @@ function showChatUI() {
     encryptionBtn.classList.add('hidden');
   }
   
-  // Add system message for self
-  addMessage('System', 'Welcome to room ' + roomNumber);
+  // add system message for self
+  addMessage('System', 'Welcome to room ' + roomNumber , '!');
 }
 
 // Display a message locally
-function addMessage(username, content) {
+function addMessage(username, content, isFile = false, fileData = null, fileType = null) {
   const messageDiv = document.createElement('div');
   const messageContainer = document.createElement('div');
   
@@ -425,7 +541,7 @@ function addMessage(username, content) {
       'italic'
     );
   } else if (username === localUsername) {
-    // Own message styling
+    // own message styling
     messageContainer.classList.add('justify-end');
     messageDiv.classList.add(
       'backdrop-blur-sm',
@@ -437,7 +553,7 @@ function addMessage(username, content) {
       'max-w-[80%]'
     );
   } else {
-    // Other users' message styling
+    //other users' message styling
     messageContainer.classList.add('justify-start');
     messageDiv.classList.add(
       'backdrop-blur-sm',
@@ -458,7 +574,28 @@ function addMessage(username, content) {
   }
 
   const contentSpan = document.createElement('div');
-  contentSpan.textContent = content;
+  
+  if (isFile && fileData) {
+    if (fileType.startsWith('image/')) {
+      // Handle images
+      const img = document.createElement('img');
+      img.src = `data:${fileType};base64,${fileData}`;
+      img.classList.add('max-w-full', 'rounded-lg', 'cursor-pointer');
+      img.onclick = () => window.open(img.src, '_blank');
+      contentSpan.appendChild(img);
+    } else {
+      // Handle other files
+      const link = document.createElement('a');
+      link.href = `data:${fileType};base64,${fileData}`;
+      link.download = content.replace('File: ', '');
+      link.classList.add('text-white', 'underline');
+      link.textContent = content;
+      contentSpan.appendChild(link);
+    }
+  } else {
+    contentSpan.textContent = content;
+  }
+
   messageDiv.appendChild(contentSpan);
   
   messageContainer.appendChild(messageDiv);
@@ -466,13 +603,13 @@ function addMessage(username, content) {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-// Leave the room
+//Leave the room
 function leaveRoom() {
-  // Close all connections
+  // close all connections
   connections.forEach((conn) => conn.close());
   connections.length = 0;
 
-  // Destroy the peer
+  //Destroy the peer
   if (peer) {
     peer.destroy();
     peer = null;
