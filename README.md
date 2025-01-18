@@ -8,7 +8,7 @@ A secure, peer-to-peer encrypted chat application that works directly in the bro
 ## Preview video
 
 
-https://github.com/user-attachments/assets/247b9f6c-87ec-437a-844a-a11a730141fe
+https://github.com/user-attachments/assets/a83daa4c-5846-4d02-bead-84ecd36e6429
 
 
 
