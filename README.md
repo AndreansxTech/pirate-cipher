@@ -101,6 +101,9 @@ npx serve
 3. Enter encryption password if required
 4. Start chatting!
 
+## Not working
+If something is not working then please ensure that your firewall allows this kind of network traffic.
+
 ## Contributing
 
 Feel free to submit issues and enhancement requests!
