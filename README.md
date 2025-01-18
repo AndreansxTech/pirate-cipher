@@ -1,4 +1,5 @@
-# Pirate Cipher - P2P Encrypted Chat
+# My simple Neo P2P Chat
+# ❗Im sorry for this but please note that the github pages deployment is not functional❗
 
 ## You can test it by opening two browser windows and connecting to the same room !
 
