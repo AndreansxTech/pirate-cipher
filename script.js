@@ -103,6 +103,7 @@ function createPeer(id = null) {
         port: 443,
         secure: true,
         path: '/',
+        // NOTE: If P2P fails on certain networks, consider your own TURN servers or more reliable providers.
         config: {
             'iceServers': [
                 { 
@@ -302,11 +303,10 @@ function showPasswordPrompt(isSettingPassword = true) {
   return new Promise((resolve, reject) => {
     const handleConfirm = () => {
       const password = passwordInput.value;
-      if (password) {
-        passwordModal.classList.add('hidden');
-        passwordInput.value = '';
-        resolve(password);
-      }
+      // allow empty password to skip encryption
+      passwordModal.classList.add('hidden');
+      passwordInput.value = '';
+      resolve(password || '');
     };
 
     const handleCancel = () => {
