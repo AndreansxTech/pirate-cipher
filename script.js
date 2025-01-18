@@ -146,21 +146,24 @@ function joinRoom() {
   localUsername = usernameInput.value.trim();
   roomNumber = roomInput.value.trim();
 
-  //create a peer with the room number first (trying to be host)
+  // Create a peer with the room number first (trying to be host)
   peer = createPeer(roomNumber);
 
   peer.on('error', async (err) => {
     if (err.type === 'unavailable-id') {
-      //room exists become a client
+      // Room exists, join as client
       console.log('Room exists, joining as client');
-      peer = createPeer();
+      peer.destroy(); // Clean up the failed peer
+      peer = createPeer(); // Create new peer with random ID
       
       peer.on('open', async () => {
+        console.log('Client peer created with ID:', peer.id);
+        
         try {
+          // Show password prompt
           encryptionKey = await showPasswordPrompt(false);
-          console.log('Creating connection to host...');
           
-          // connect to host
+          // Connect to host
           const conn = peer.connect(roomNumber, {
             reliable: true,
             serialization: 'json'
@@ -168,23 +171,26 @@ function joinRoom() {
           
           conn.on('open', () => {
             isHost = false;
-            console.log('Connected as client to:', roomNumber);
-            handleConnection(conn);  //this will set up the data listener
+            console.log('Connected to host:', roomNumber);
+            handleConnection(conn);
             connections.push(conn);
             showChatUI();
           });
 
           conn.on('error', (err) => {
-            console.error('Client connection error:', err);
+            console.error('Connection error:', err);
+            alert('Failed to connect to the room. Please try again.');
           });
 
         } catch (e) {
           console.log('Password entry cancelled');
           hasDeclined = true;
+          
           const conn = peer.connect(roomNumber, {
             reliable: true,
             serialization: 'json'
           });
+          
           conn.on('open', () => {
             isHost = false;
             connections.push(conn);
@@ -193,6 +199,14 @@ function joinRoom() {
           });
         }
       });
+
+      peer.on('error', (err) => {
+        console.error('Client peer error:', err);
+        alert('Failed to create client peer. Please try again.');
+      });
+    } else {
+      console.error('Peer error:', err);
+      alert('Failed to join room. Please try again.');
     }
   });
 
@@ -375,54 +389,53 @@ function handleConnection(conn) {
   conn.on('open', async () => {
     console.log('Connection established with:', conn.peer);
 
-    // send join message
+    // Send join message
     try {
-      conn.send({
+      const joinMessage = {
         type: 'join',
         username: localUsername,
         content: encryptMessage(`${localUsername} joined the chat`)
-      });
+      };
+      
+      console.log('Sending join message:', joinMessage);
+      conn.send(joinMessage);
     } catch (err) {
       console.error('Error sending join message:', err);
+      addMessage('System', 'Failed to send join message');
     }
   });
 
-  //single data event handler for all messages
   conn.on('data', (data) => {
-    console.log('Received data:', data.type);
+    console.log('Received data type:', data.type, 'from:', data.username);
 
-    switch(data.type) {
-      case 'join':
-        addMessage('System', decryptMessage(data.content));
-        break;
-      case 'chat':
-        // Only show messages from others
-        if (data.username !== localUsername) {
-          addMessage(data.username, decryptMessage(data.content));
-        }
-        // If host, broadcast to others
-        if (isHost) {
-          connections.forEach(otherConn => {
-            if (otherConn.peer !== conn.peer && otherConn.open) {
-              console.log('Broadcasting to:', otherConn.peer);
-              otherConn.send(data);
-            }
-          });
-        }
-        break;
-      case 'file':
-        if (data.username !== localUsername) {
-          const fileContent = decryptMessage(data.content);
-          addMessage(data.username, `File: ${data.fileName}`, true, fileContent, data.fileType);
-        }
-        if (isHost) {
-          connections.forEach(otherConn => {
-            if (otherConn.peer !== conn.peer && otherConn.open) {
-              otherConn.send(data);
-            }
-          });
-        }
-        break;
+    try {
+      switch(data.type) {
+        case 'join':
+          addMessage('System', decryptMessage(data.content));
+          break;
+        case 'chat':
+          if (data.username !== localUsername) {
+            const decryptedContent = decryptMessage(data.content);
+            console.log('Decrypted message:', decryptedContent);
+            addMessage(data.username, decryptedContent);
+          }
+          if (isHost) {
+            broadcastMessage(data, conn.peer);
+          }
+          break;
+        case 'file':
+          if (data.username !== localUsername) {
+            const fileContent = decryptMessage(data.content);
+            addMessage(data.username, `File: ${data.fileName}`, true, fileContent, data.fileType);
+          }
+          if (isHost) {
+            broadcastMessage(data, conn.peer);
+          }
+          break;
+      }
+    } catch (err) {
+      console.error('Error handling message:', err);
+      addMessage('System', 'Failed to process message');
     }
   });
 
@@ -435,6 +448,7 @@ function handleConnection(conn) {
   conn.on('error', (err) => {
     console.error('Connection error:', err);
     removeConnection(conn);
+    addMessage('System', 'Connection error occurred');
   });
 }
 
@@ -603,6 +617,18 @@ function addMessage(username, content, isFile = false, fileData = null, fileType
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
+function broadcastMessage(data, senderPeer) {
+  connections.forEach(otherConn => {
+    if (otherConn.peer !== senderPeer && otherConn.open) {
+      try {
+        console.log('Broadcasting to:', otherConn.peer);
+        otherConn.send(data);
+      } catch (err) {
+        console.error('Error broadcasting to peer:', otherConn.peer, err);
+      }
+    }
+  });
+}
 //Leave the room
 function leaveRoom() {
   // close all connections
