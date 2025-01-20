@@ -138,7 +138,7 @@ async function establishConnection(targetPeerId, maxRetries = 3) {
             return await new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     reject(new Error('Connection timeout'));
-                }, 10000);
+                }, 100000);
 
                 conn.on('open', () => {
                     clearTimeout(timeout);
