@@ -95,135 +95,156 @@ fileInput.addEventListener('change', handleFileSelect);
 // We'll keep a reference to our Peer instance:
 let peer = null;
 
-// Update peer creation with ICE server configuration
 function createPeer(id = null) {
     const config = {
         debug: 2,
-        host: '0.peerjs.com', // Use PeerJS's free public server
-        port: 443,
         secure: true,
+        host: '0.peerjs.com',
+        port: 443,
         path: '/',
-        // NOTE: If P2P fails on certain networks, consider your own TURN servers or more reliable providers.
         config: {
             'iceServers': [
-                { 
-                    urls: [
-                        'stun:stun.l.google.com:19302',
-                        'stun:stun1.l.google.com:19302',
-                        'stun:stun2.l.google.com:19302',
-                        'stun:stun3.l.google.com:19302',
-                        'stun:stun4.l.google.com:19302',
-                        'stun:stun.stunprotocol.org:3478'
-                    ]
-                },
+                { urls: 'stun:138.68.182.24:3478' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                // turn server paid by me
                 {
-                    urls: 'turn:openrelay.metered.ca:80',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
-                },
-                {
-                    urls: 'turn:openrelay.metered.ca:443',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
+                    urls: 'turn:138.68.182.24:3478',
+                    username: 'debianturn',
+                    credential: 'jaZxir-6fawje-remrot'
                 }
-            ]
+            ],
+            iceCandidatePoolSize: 10,
+            iceTransportPolicy: 'all'
         }
     };
 
     return new Peer(id, config);
 }
 
-// Update joinRoom function to simplify connection logic
-function joinRoom() {
-  const usernameInput = document.getElementById('username');
-  const roomInput = document.getElementById('room-number');
+// Add connection retry logic
+async function establishConnection(targetPeerId, maxRetries = 3) {
+    let retries = 0;
+    
+    while (retries < maxRetries) {
+        try {
+            addMessage('System', `Attempting to connect... (${retries + 1}/${maxRetries})`);
+            
+            const conn = peer.connect(targetPeerId, {
+                reliable: true,
+                serialization: 'json',
+                retry: true
+            });
 
-  if (!usernameInput.value || !roomInput.value.match(/^\d{4}$/)) {
-    alert('Please enter a valid name and 4-digit room number');
-    return;
-  }
+            return await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('Connection timeout'));
+                }, 10000);
 
-  localUsername = usernameInput.value.trim();
-  roomNumber = roomInput.value.trim();
+                conn.on('open', () => {
+                    clearTimeout(timeout);
+                    resolve(conn);
+                });
 
-  // Create a peer with the room number first (trying to be host)
-  peer = createPeer(roomNumber);
+                conn.on('error', (err) => {
+                    clearTimeout(timeout);
+                    reject(err);
+                });
+            });
+        } catch (err) {
+            retries++;
+            if (retries === maxRetries) {
+                throw new Error('Failed to establish connection after multiple attempts');
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s between retries
+        }
+    }
+}
 
-  peer.on('error', async (err) => {
-    if (err.type === 'unavailable-id') {
-      // Room exists, join as client
-      console.log('Room exists, joining as client');
-      peer.destroy(); // Clean up the failed peer
-      peer = createPeer(); // Create new peer with random ID
-      
-      peer.on('open', async () => {
-        console.log('Client peer created with ID:', peer.id);
+// Update joinRoom function with better connection handling
+async function joinRoom() {
+    const usernameInput = document.getElementById('username');
+    const roomInput = document.getElementById('room-number');
+
+    if (!usernameInput.value || !roomInput.value.match(/^\d{4}$/)) {
+        alert('Please enter a valid name and 4-digit room number');
+        return;
+    }
+
+    localUsername = usernameInput.value.trim();
+    roomNumber = roomInput.value.trim();
+    
+    addMessage('System', 'Connecting to room...');
+
+    try {
+        // Try to create room as host first
+        peer = createPeer(roomNumber);
+
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Peer creation timeout')), 10000);
+            
+            peer.on('open', (id) => {
+                clearTimeout(timeout);
+                resolve(id);
+            });
+
+            peer.on('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
+            });
+        });
+
+        // If we get here, were the host
+        isHost = true;
+        console.log('Created room as host:', roomNumber);
+        becomeHost();
+        
+        peer.on('connection', (clientConn) => {
+            console.log('Host received connection:', clientConn.peer);
+            handleConnection(clientConn);
+            connections.push(clientConn);
+        });
+
+    } catch (err) {
+        // Room exists or creation failed, try joining as client
+        console.log('Joining as client:', err);
+        
+        if (peer) {
+            peer.destroy();
+        }
+
+        peer = createPeer(); // Create with random ID
         
         try {
-          // Show password prompt
-          encryptionKey = await showPasswordPrompt(false);
-          
-          // Connect to host
-          const conn = peer.connect(roomNumber, {
-            reliable: true,
-            serialization: 'json'
-          });
-          
-          conn.on('open', () => {
-            isHost = false;
-            console.log('Connected to host:', roomNumber);
-            handleConnection(conn);
-            connections.push(conn);
-            showChatUI();
-          });
+            // Wait for peer creation
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Peer creation timeout')), 10000);
+                
+                peer.on('open', (id) => {
+                    clearTimeout(timeout);
+                    resolve(id);
+                });
 
-          conn.on('error', (err) => {
-            console.error('Connection error:', err);
-            alert('Failed to connect to the room. Please try again.');
-          });
+                peer.on('error', (err) => {
+                    clearTimeout(timeout);
+                    reject(err);
+                });
+            });
 
-        } catch (e) {
-          console.log('Password entry cancelled');
-          hasDeclined = true;
-          
-          const conn = peer.connect(roomNumber, {
-            reliable: true,
-            serialization: 'json'
-          });
-          
-          conn.on('open', () => {
+            // Try to connect to host
+            encryptionKey = await showPasswordPrompt(false);
+            const conn = await establishConnection(roomNumber);
+            
             isHost = false;
             connections.push(conn);
             handleConnection(conn);
             showChatUI();
-          });
+
+        } catch (err) {
+            console.error('Failed to join room:', err);
+            addMessage('System', 'Failed to join room. Please try again.');
+            leaveRoom();
         }
-      });
-
-      peer.on('error', (err) => {
-        console.error('Client peer error:', err);
-        alert('Failed to create client peer. Please try again.');
-      });
-    } else {
-      console.error('Peer error:', err);
-      alert('Failed to join room. Please try again.');
     }
-  });
-
-  peer.on('open', (id) => {
-    if (id === roomNumber) {
-      isHost = true;
-      console.log('Created room as host:', id);
-      
-      peer.on('connection', (clientConn) => {
-        console.log('Host received connection from:', clientConn.peer);
-        handleConnection(clientConn);
-        connections.push(clientConn);
-      });
-      
-      becomeHost();
-    }
-  });
 }
 
 // new function to handle host creation
@@ -280,13 +301,10 @@ function setupPeerListeners() {
   });
 
   peer.on('connection', (conn) => {
-    //Typically a client wouldnt expect inbound connections
-    //but lets keep it if you want advanced multi-direction features
     handleConnection(conn);
   });
 }
 
-//for clients: connect to the host's Peer ID (which is the roomNumber)
 function connectToHost() {
   const conn = peer.connect(roomNumber);
   handleConnection(conn);
@@ -384,72 +402,86 @@ async function handleFileSelect(event) {
   fileInput.value = '';
 }
 
-// Update handleConnection function to fix message handling
+// Update handleConnection with better error handling
 function handleConnection(conn) {
-  conn.on('open', async () => {
-    console.log('Connection established with:', conn.peer);
+    // Add connection monitoring
+    let heartbeat = setInterval(() => {
+        if (conn.open) {
+            try {
+                conn.send({ type: 'ping' });
+            } catch (err) {
+                console.warn('Heartbeat failed:', err);
+            }
+        }
+    }, 30000);
 
-    // Send join message
-    try {
-      const joinMessage = {
-        type: 'join',
-        username: localUsername,
-        content: encryptMessage(`${localUsername} joined the chat`)
-      };
-      
-      console.log('Sending join message:', joinMessage);
-      conn.send(joinMessage);
-    } catch (err) {
-      console.error('Error sending join message:', err);
-      addMessage('System', 'Failed to send join message');
-    }
-  });
+    conn.on('open', async () => {
+        console.log('Connection established with:', conn.peer);
 
-  conn.on('data', (data) => {
-    console.log('Received data type:', data.type, 'from:', data.username);
+        // Send join message
+        try {
+            const joinMessage = {
+                type: 'join',
+                username: localUsername,
+                content: encryptMessage(`${localUsername} joined the chat`)
+            };
+            
+            console.log('Sending join message:', joinMessage);
+            conn.send(joinMessage);
+        } catch (err) {
+            console.error('Error sending join message:', err);
+            addMessage('System', 'Failed to send join message');
+        }
+    });
 
-    try {
-      switch(data.type) {
-        case 'join':
-          addMessage('System', decryptMessage(data.content));
-          break;
-        case 'chat':
-          if (data.username !== localUsername) {
-            const decryptedContent = decryptMessage(data.content);
-            console.log('Decrypted message:', decryptedContent);
-            addMessage(data.username, decryptedContent);
-          }
-          if (isHost) {
-            broadcastMessage(data, conn.peer);
-          }
-          break;
-        case 'file':
-          if (data.username !== localUsername) {
-            const fileContent = decryptMessage(data.content);
-            addMessage(data.username, `File: ${data.fileName}`, true, fileContent, data.fileType);
-          }
-          if (isHost) {
-            broadcastMessage(data, conn.peer);
-          }
-          break;
-      }
-    } catch (err) {
-      console.error('Error handling message:', err);
-      addMessage('System', 'Failed to process message');
-    }
-  });
+    conn.on('data', (data) => {
+        if (data.type === 'ping') return; // Ignore heartbeat
+        console.log('Received data type:', data.type, 'from:', data.username);
 
-  conn.on('close', () => {
-    console.log('Connection closed:', conn.peer);
-    removeConnection(conn);
-    addMessage('System', 'A user has disconnected');
-  });
+        try {
+            switch(data.type) {
+                case 'join':
+                    addMessage('System', decryptMessage(data.content));
+                    break;
+                case 'chat':
+                    if (data.username !== localUsername) {
+                        const decryptedContent = decryptMessage(data.content);
+                        console.log('Decrypted message:', decryptedContent);
+                        addMessage(data.username, decryptedContent);
+                    }
+                    if (isHost) {
+                        broadcastMessage(data, conn.peer);
+                    }
+                    break;
+                case 'file':
+                    if (data.username !== localUsername) {
+                        const fileContent = decryptMessage(data.content);
+                        addMessage(data.username, `File: ${data.fileName}`, true, fileContent, data.fileType);
+                    }
+                    if (isHost) {
+                        broadcastMessage(data, conn.peer);
+                    }
+                    break;
+            }
+        } catch (err) {
+            console.error('Error handling message:', err);
+            addMessage('System', 'Failed to process message');
+        }
+    });
 
-  conn.on('error', (err) => {
-    console.error('Connection error:', err);
-    removeConnection(conn);
-    addMessage('System', 'Connection error occurred');
-  });
+    conn.on('close', () => {
+        clearInterval(heartbeat);
+        console.log('Connection closed:', conn.peer);
+        removeConnection(conn);
+        addMessage('System', 'A user has disconnected');
+    });
+
+    conn.on('error', (err) => {
+        clearInterval(heartbeat);
+        console.error('Connection error:', err);
+        removeConnection(conn);
+        addMessage('System', 'Connection error occurred');
+    });
 }
 
 function sendMessage() {
@@ -507,7 +539,7 @@ function logConnections() {
   })));
 }
 
-// update removeConnection to include logging
+// update removeconnection to include logging
 function removeConnection(conn) {
   const index = connections.indexOf(conn);
   if (index >= 0) {
@@ -521,7 +553,17 @@ function removeConnection(conn) {
 function showChatUI() {
   roomDisplay.textContent = `Room: ${roomNumber} | Username: ${localUsername}`;
   joinForm.classList.add('hidden');
+  
+  chatRoom.style.opacity = '0';
+  chatRoom.style.transform = 'translateY(20px)';
   chatRoom.classList.remove('hidden');
+  
+  // Trigger animation
+  setTimeout(() => {
+      chatRoom.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+      chatRoom.style.opacity = '1';
+      chatRoom.style.transform = 'translateY(0)';
+  }, 50);
   
   if (hasDeclined) {
     encryptionBtn.classList.remove('hidden');
@@ -538,8 +580,13 @@ function addMessage(username, content, isFile = false, fileData = null, fileType
   const messageDiv = document.createElement('div');
   const messageContainer = document.createElement('div');
   
-  // Base classes for all messages
-  messageContainer.classList.add('flex', 'w-full', 'mb-2');
+  // Add animation class
+  messageContainer.classList.add('message', 'flex', 'w-full', 'mb-2');
+  
+  // Add animation delay based on queue position
+  const messages = messagesDiv.children;
+  const delay = Math.min(messages.length * 0.1, 1); 
+  messageContainer.style.animationDelay = `${delay}s`;
   
   if (username === 'System') {
     // System message styling
@@ -591,14 +638,14 @@ function addMessage(username, content, isFile = false, fileData = null, fileType
   
   if (isFile && fileData) {
     if (fileType.startsWith('image/')) {
-      // Handle images
+      //handle images
       const img = document.createElement('img');
       img.src = `data:${fileType};base64,${fileData}`;
       img.classList.add('max-w-full', 'rounded-lg', 'cursor-pointer');
       img.onclick = () => window.open(img.src, '_blank');
       contentSpan.appendChild(img);
     } else {
-      // Handle other files
+      // handle other files
       const link = document.createElement('a');
       link.href = `data:${fileType};base64,${fileData}`;
       link.download = content.replace('File: ', '');
@@ -631,22 +678,29 @@ function broadcastMessage(data, senderPeer) {
 }
 //Leave the room
 function leaveRoom() {
-  // close all connections
-  connections.forEach((conn) => conn.close());
-  connections.length = 0;
+  chatRoom.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+  chatRoom.style.opacity = '0';
+  chatRoom.style.transform = 'translateY(20px)';
+  
+  // Wait for animation to complete
+  setTimeout(() => {
+      // close all connections
+      connections.forEach((conn) => conn.close());
+      connections.length = 0;
 
-  //Destroy the peer
-  if (peer) {
-    peer.destroy();
-    peer = null;
-  }
+      //destroy the peer
+      if (peer) {
+        peer.destroy();
+        peer = null;
+      }
 
-  messagesDiv.innerHTML = '';
-  chatRoom.classList.add('hidden');
-  joinForm.classList.remove('hidden');
-  encryptionKey = '';
-  isPasswordSet = false;
-  hasDeclined = false;
-  encryptionBtn.classList.add('hidden');
-  console.log('Left the room');
+      messagesDiv.innerHTML = '';
+      chatRoom.classList.add('hidden');
+      joinForm.classList.remove('hidden');
+      encryptionKey = '';
+      isPasswordSet = false;
+      hasDeclined = false;
+      encryptionBtn.classList.add('hidden');
+      console.log('Left the room');
+  }, 500);
 }
