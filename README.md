@@ -1,11 +1,20 @@
 # My Neo P2P Chat
 
-A browser-based peer-to-peer encrypted chat application with file sharing capabilities and a modern UI design. Built with WebRTC for direct peer connections and AES encryption for secure messaging.
+A browser-based peer-to-peer encrypted chat application with file sharing capabilities and a modern UI design. Built with WebRTC for direct peer connections and AES encryption for secure messaging and it uses my own TURN/STUN server.
 
 ## Latest update❗
 One of the admins of the event that I made this project for pointed out that he has been getting errors when joining. I checked and he was right. I really struggled with how to make it work. The main problem was the TURN server. So I simply made my own. I created a droplet on DigitalOcean and ran a Coturn server there. 
 ## Website
 ### You can check out and communicate now with people in different places by visiting https://my-neo-p2p-chat.pages.dev/
+
+## Below is a video showing what I fixed
+There are two devices. The laptop is on my local network connected to the website and the smartphone is connected to a cellular network. As you can see, I am able to communicate between those two devices.
+
+
+https://github.com/user-attachments/assets/e9566b18-d369-4033-9b91-3dd88abc5850
+
+
+
 ## Features
 
 ### Security & Privacy 
@@ -97,3 +106,9 @@ To modify or enhance:
 1. Clone the repository
 2. Edit files directly - no build step needed
 3. Open index.html locally 
+
+### The project is currently using my STUN/TURN server because the public ones are working so bad that you littelary could not make a connection. You can make your own by paying for a droplet on DigitalOcean ( or any web-capable server with SSH access ) and installing <a href="https://github.com/coturn/coturn">Coturn</a> there. 
+```
+sudo apt-get install coturn
+```
+Then you will need to modify the configuration files accordingly to you.
