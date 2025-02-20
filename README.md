@@ -1,3 +1,7 @@
+## As of 20.02.2025 the TURN/STUN server used by this project is NO LONGER ACTIVE
+Connections will still work in one LAN. If you want, you can implement your own TURN/STUN server by making changes to the TURN server settings in the script.js file.
+
+
 # My Neo P2P Chat
 
 A browser-based peer-to-peer encrypted chat application with file sharing capabilities and a modern UI design. Built with WebRTC for direct peer connections and AES encryption for secure messaging and it uses my own TURN/STUN server.
